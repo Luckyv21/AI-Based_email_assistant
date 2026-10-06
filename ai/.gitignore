@@ -1,0 +1,38 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache & test
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*$py.class
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Large model binaries & checkpoints (> 100MB)
+*.bin
+*.pt
+*.safetensors
+*.onnx
+models/pretrained/*
+!models/pretrained/.gitkeep
+models/trained/*
+!models/trained/.gitkeep
+models/**/*.bin
+models/**/*.pt
+models/**/*.safetensors
+
+# Datasets and experiments
+data/raw/*.csv
+data/processed/*
+!data/processed/.gitkeep
+data/splits/*.csv
+data/splits/*.json
+!data/splits/.gitkeep
+experiments/*.json
+experiments/*.csv

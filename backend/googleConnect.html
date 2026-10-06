@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connect Gmail</title>
+</head>
+
+<body>
+
+    <h1>Connect Gmail</h1>
+
+    <p>Paste your application JWT below:</p>
+
+    <input
+        id="token"
+        type="text"
+        placeholder="Paste JWT here"
+        style="width: 500px;"
+    />
+
+    <button onclick="connectGmail()">
+        Connect Gmail
+    </button>
+
+    <script>
+        function connectGmail() {
+            const token = document.getElementById("token").value;
+
+            if (!token) {
+                alert("Please enter your JWT");
+                return;
+            }
+
+            window.location.href =
+                "/api/auth/google?token=" +
+                encodeURIComponent(token);
+        }
+    </script>
+
+</body>
+</html>

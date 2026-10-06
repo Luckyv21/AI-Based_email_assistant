@@ -1,0 +1,22 @@
+{
+  "model_type": "distilbert-bilstm-multihead-ner",
+  "base_model": "distilbert-base-uncased",
+  "lstm_hidden": 256,
+  "lstm_layers": 1,
+  "bidirectional": true,
+  "dropout": 0.2,
+  "num_labels": 3,
+  "labels": {
+    "0": "O",
+    "1": "B",
+    "2": "I"
+  },
+  "heads": [
+    "EVENT",
+    "DATE",
+    "TIME",
+    "LOCATION"
+  ],
+  "best_validation_loss": 0.2931,
+  "test_exact_span_f1": 0.4366
+}

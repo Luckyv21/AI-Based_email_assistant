@@ -1,0 +1,96 @@
+# ==========================================
+# Environment Variables & Secrets (CRITICAL)
+# ==========================================
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+!.env.example
+!**/.env.example
+
+# ==========================================
+# Local Databases & Runtime Storage
+# ==========================================
+.mongo_data/
+*.rdb
+*.sqlite3
+
+# ==========================================
+# Dependencies & Virtual Environments
+# ==========================================
+node_modules/
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ==========================================
+# Large AI Models, Checkpoints & Archives
+# (GitHub rejects files > 100MB)
+# ==========================================
+Ai_models/
+*.bin
+*.pt
+*.pth
+*.safetensors
+*.onnx
+*.zip
+*.tar
+*.tar.gz
+*.7z
+ai/models/event_extractor/*.bin
+ai/models/secd_classifier/*.bin
+ai/models/trained/*.safetensors
+ai/models/trained/*.bin
+ai/models/trained/*.pt
+
+# AI Datasets & Cache
+ai/data/raw/*.csv
+ai/data/processed/*
+!ai/data/processed/.gitkeep
+ai/data/splits/*.csv
+ai/data/splits/*.json
+!ai/data/splits/.gitkeep
+
+# ==========================================
+# Python Cache & Testing
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ==========================================
+# Frontend Build Artifacts
+# ==========================================
+frontend/dist/
+frontend/dist-ssr/
+
+# ==========================================
+# Logs
+# ==========================================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================================
+# IDE & System Files
+# ==========================================
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db

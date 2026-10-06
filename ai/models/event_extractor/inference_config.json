@@ -1,0 +1,33 @@
+{
+  "model": "DistilBERT + BiLSTM Multi-Head NER",
+  "base_model": "distilbert-base-uncased",
+  "entities": {
+    "EVENT": {
+      "threshold": 0.65
+    },
+    "DATE": {
+      "threshold": 0.3
+    },
+    "TIME": {
+      "threshold": 0.3
+    },
+    "LOCATION": {
+      "threshold": 0.45
+    }
+  },
+  "label_mapping": {
+    "0": "O",
+    "1": "B",
+    "2": "I"
+  },
+  "max_length": 512,
+  "stride": 128,
+  "validation_tuning": true,
+  "test_results": {
+    "EVENT_F1": 0.4841,
+    "DATE_F1": 0.3175,
+    "TIME_F1": 0.2778,
+    "LOCATION_F1": 0.1739,
+    "OVERALL_F1": 0.4533
+  }
+}

@@ -1,0 +1,12 @@
+{
+    "category": {
+        "0": "Office",
+        "1": "Education",
+        "2": "Personal"
+    },
+    "priority": {
+        "0": "Normal",
+        "1": "Important",
+        "2": "Urgent"
+    }
+}
