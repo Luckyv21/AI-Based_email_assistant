@@ -19,10 +19,10 @@ const { startAutoAiWorker, stopAutoAiWorker } = require("./services/autoAiWorker
 const app = express();
 
 const PORT = Number(process.env.PORT) || 5000;
-const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
+const frontendOrigins = Array.from(new Set([process.env.FRONTEND_ORIGIN, "http://localhost:3000", "http://localhost:5173"].filter(Boolean)));
 
 app.use(helmet());
-app.use(cors({ origin: frontendOrigin }));
+app.use(cors({ origin: frontendOrigins, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 

@@ -6,6 +6,8 @@ import { AuthProvider } from "./context/AuthContext";
 import { EmailProvider } from "./context/EmailContext";
 import "./styles/index.css";
 import "./styles/message-fix.css";
+import "./styles/auth.css";
+import "./styles/dashboard.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

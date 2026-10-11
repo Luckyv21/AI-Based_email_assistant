@@ -17,7 +17,11 @@ export default function EmptyState({
 
   return (
     <div className="empty-state">
-      <span className="empty-icon">{isConnected ? "⌁" : "✉"}</span>
+      <div className="empty-icon">
+        <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+      </div>
       <h3>{resolvedTitle}</h3>
       <p>{resolvedText}</p>
       {action ? (

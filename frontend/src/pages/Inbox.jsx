@@ -98,8 +98,18 @@ export default function Inbox({ folder = "", title = "Inbox", filter = {} }) {
             Gmail status
           </button>
           {isConnected ? (
-            <button className="button" onClick={doSync} disabled={syncing}>
-              {syncing ? "Syncing..." : "Sync Gmail"}
+            <button className="button button-primary" onClick={doSync} disabled={syncing}>
+              <svg
+                width="15"
+                height="15"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                style={{ animation: syncing ? "authSpin 0.7s linear infinite" : "none" }}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>{syncing ? "Syncing..." : "Sync Gmail"}</span>
             </button>
           ) : (
             <button className="button button-primary" onClick={connectGoogle}>
@@ -117,17 +127,22 @@ export default function Inbox({ folder = "", title = "Inbox", filter = {} }) {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            background: "#fef3c7",
-            borderColor: "#fde68a",
+            background: "#fffbeb",
+            border: "1px solid #fde68a",
+            borderRadius: "12px",
+            padding: "14px 18px",
             color: "#92400e"
           }}
         >
-          <div>
-            <strong>Gmail not connected.</strong> Connect your account to automatically sync and classify emails.
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "18px" }}>⚠️</span>
+            <div>
+              <strong>Gmail is not connected.</strong> Connect your account to automatically sync and classify incoming emails.
+            </div>
           </div>
           <button
             className="button button-primary"
-            style={{ padding: "6px 14px", fontSize: "13px" }}
+            style={{ padding: "8px 16px", fontSize: "13px" }}
             onClick={connectGoogle}
           >
             Connect Gmail
@@ -143,14 +158,18 @@ export default function Inbox({ folder = "", title = "Inbox", filter = {} }) {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            padding: "10px 14px"
+            padding: "12px 16px",
+            borderRadius: "10px",
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            color: "#991b1b"
           }}
         >
           <span>{syncError}</span>
           <button
             type="button"
             className="button button-quiet"
-            style={{ padding: "2px 8px", fontSize: "12px", background: "none", border: "none" }}
+            style={{ padding: "2px 8px", fontSize: "12px", background: "none", border: "none", cursor: "pointer" }}
             onClick={() => setSyncError("")}
           >
             ✕
@@ -159,22 +178,40 @@ export default function Inbox({ folder = "", title = "Inbox", filter = {} }) {
       )}
 
       <div className="summary-strip">
-        <div>
-          <strong>{visibleEmails.length || pagination.total || 0}</strong>
-          <span>Messages</span>
+        <div className="summary-metric-card">
+          <div className="summary-metric-icon">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div className="summary-metric-text">
+            <strong>{visibleEmails.length || pagination.total || 0}</strong>
+            <span>Total Messages</span>
+          </div>
         </div>
-        <div>
-          <strong>
-            {emails.filter((email) => priorityMatch(email.priority, "Important")).length}
-          </strong>
-          <span>Important</span>
+
+        <div className="summary-metric-card">
+          <div className="summary-metric-icon" style={{ background: "#fffbeb", color: "#b45309" }}>
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div className="summary-metric-text">
+            <strong>{emails.filter((email) => priorityMatch(email.priority, "Important")).length}</strong>
+            <span>Important Threads</span>
+          </div>
         </div>
-        <div>
-          <strong>{emails.filter((email) => email.hasEvent).length}</strong>
-          <span>Events detected</span>
-        </div>
-        <div className="summary-note">
-          {search ? `Results for “${search}”` : `Displaying classified ${title} messages`}
+
+        <div className="summary-metric-card">
+          <div className="summary-metric-icon" style={{ background: "#eef2ff", color: "#4338ca" }}>
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div className="summary-metric-text">
+            <strong>{emails.filter((email) => email.hasEvent).length}</strong>
+            <span>Events Detected</span>
+          </div>
         </div>
       </div>
 
