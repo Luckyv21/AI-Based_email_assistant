@@ -87,6 +87,14 @@ export function AuthProvider({ children }) {
     disconnectGoogle: async () => {
       await authApi.disconnectGoogle();
       logout();
+    },
+    updateProfile: async (name) => {
+      const data = await authApi.updateProfile(name);
+      if (data?.user) {
+        localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+        setUser(data.user);
+        return data.user;
+      }
     }
   };
 

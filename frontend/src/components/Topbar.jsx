@@ -55,7 +55,14 @@ export default function Topbar({ onMenu, onCompose }) {
               <span>{user?.email || ""}</span>
             </div>
             <div className="dropdown-divider"></div>
-            <button className="dropdown-item" onClick={(e) => { e.stopPropagation(); /* Manage action here */ }}>
+            <button
+              className="dropdown-item"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDropdownOpen(false);
+                navigate("/account");
+              }}
+            >
               Manage Account
             </button>
             <button className="dropdown-item" onClick={(e) => { e.stopPropagation(); logout(); }}>

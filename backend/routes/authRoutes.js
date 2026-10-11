@@ -2,7 +2,7 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 const protect = require("../middleware/authMiddleware");
 
-const { registerUser, loginUser, getMe } = require("../controllers/authController");
+const { registerUser, loginUser, getMe, updateProfile } = require("../controllers/authController");
 
 const {
     googleLogin,
@@ -26,6 +26,7 @@ const authLimiter = rateLimit({
 router.post("/register", authLimiter, registerUser);
 router.post("/login", authLimiter, loginUser);
 router.get("/me", protect, getMe);
+router.put("/profile", protect, updateProfile);
 
 router.get("/google/signin", googleSignIn);       // No auth — Login page
 router.get("/google", protect, googleLogin);       // Auth required — Connect page

@@ -11,6 +11,7 @@ import Important from "./pages/Important";
 import Starred from "./pages/Starred";
 import Events from "./pages/Events";
 import EmailDetail from "./pages/EmailDetail";
+import Account from "./pages/Account";
 import { useAuth } from "./context/AuthContext";
 
 function Private({ children }) { return <ProtectedRoute><Layout>{children}</Layout></ProtectedRoute>; }
@@ -20,6 +21,7 @@ export default function App() {
     <Route path="/login" element={isAuthenticated ? <Navigate to="/inbox" replace /> : <Login />} />
     <Route path="/register" element={isAuthenticated ? <Navigate to="/inbox" replace /> : <Register />} />
     <Route path="/auth/google/callback" element={<GoogleCallback />} />
+    <Route path="/account" element={<Private><Account /></Private>} />
     <Route path="/gmail-connect" element={<Private><GmailOnboarding /></Private>} />
     <Route path="/inbox" element={<Private><Inbox /></Private>} />
     <Route path="/inbox/:id" element={<Private><EmailDetail /></Private>} />

@@ -6,4 +6,4 @@ export const getMe = () => request("/api/auth/me");
 export const disconnectGoogle = () => request("/api/auth/google", { method: "DELETE" });
 export const googleUrl = () => `${API_URL}/api/auth/google?token=${encodeURIComponent(localStorage.getItem("email_assistant_token") || "")}`;
 export const googleSignInUrl = () => `${API_URL}/api/auth/google/signin`;
-
+export const updateProfile = (name) => request("/api/auth/profile", { method: "PUT", body: JSON.stringify({ name }) });

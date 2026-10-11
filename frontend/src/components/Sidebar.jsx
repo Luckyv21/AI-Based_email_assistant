@@ -12,7 +12,8 @@ const links = [
   { to: "/sent", icon: "↗", label: "Sent" },
   { to: "/drafts", icon: "□", label: "Drafts" },
   { to: "/trash", icon: "⌫", label: "Trash" },
-  { to: "/spam", icon: "⊘", label: "Spam" }
+  { to: "/spam", icon: "⊘", label: "Spam" },
+  { to: "/account", icon: "⚙", label: "Account" }
 ];
 
 export default function Sidebar({ onCompose, open, onClose }) {
