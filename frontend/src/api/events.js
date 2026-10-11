@@ -33,3 +33,20 @@ export async function deleteEvent(id) {
     method: "DELETE"
   });
 }
+
+export async function getEventAlerts() {
+  return request("/api/events/alerts");
+}
+
+export async function dismissEventAlert(id) {
+  return request(`/api/events/${id}/dismiss-alert`, {
+    method: "PATCH"
+  });
+}
+
+export async function setEventReminder(id, minutesBefore) {
+  return request(`/api/events/${id}/reminder`, {
+    method: "PATCH",
+    body: JSON.stringify({ minutesBefore })
+  });
+}

@@ -71,6 +71,16 @@ const eventSchema = new mongoose.Schema(
             default: false
         },
 
+        reminderMinutesBefore: {
+            type: Number,
+            default: 60
+        },
+
+        alertDismissed: {
+            type: Boolean,
+            default: false
+        },
+
         status: {
             type: String,
             enum: ["Upcoming", "Completed", "Cancelled"],

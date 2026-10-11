@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useEmails } from "../context/EmailContext";
+import { EventAlertsDropdown } from "./EventAlerts";
 
 export default function Topbar({ onMenu, onCompose }) {
   const [search, setSearch] = useState("");
@@ -41,6 +42,8 @@ export default function Topbar({ onMenu, onCompose }) {
       </form>
       <button className="button compose-mobile" onClick={onCompose}>Compose</button>
       
+      <EventAlertsDropdown />
+
       <div className="profile" ref={profileRef} onClick={() => setDropdownOpen(!dropdownOpen)}>
         <span className="avatar">{user?.name?.[0]?.toUpperCase() || "U"}</span>
         <span className="profile-name">{user?.name || "Account"}</span>

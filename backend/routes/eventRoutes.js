@@ -6,11 +6,17 @@ const {
     getEventById,
     createEvent,
     updateEvent,
-    deleteEvent
+    deleteEvent,
+    getAlerts,
+    dismissAlert,
+    setReminder
 } = require("../controllers/eventController");
 
 router.use(protect);
 
+router.get("/alerts", getAlerts);
+router.patch("/:id/dismiss-alert", dismissAlert);
+router.patch("/:id/reminder", setReminder);
 router.get("/", getEvents);
 router.get("/:id", getEventById);
 router.post("/", createEvent);

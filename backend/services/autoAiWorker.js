@@ -1,6 +1,6 @@
 const Email = require("../models/Email");
 const { applyAIToEmail } = require("./aiService");
-const { deleteEndedEvents } = require("./eventService");
+const { deleteEndedEvents, checkAndTriggerEventReminders } = require("./eventService");
 
 let isRunning = false;
 let workerTimer = null;
@@ -11,11 +11,12 @@ const processBatch = async (batchSize = 5) => {
     isRunning = true;
 
     try {
-        // Run ended events auto-cleanup every 30 seconds
+        // Run ended events auto-cleanup and reminder checks every 30 seconds
         const now = Date.now();
         if (now - lastCleanupTime > 30000) {
             lastCleanupTime = now;
             await deleteEndedEvents();
+            await checkAndTriggerEventReminders();
         }
 
         const unanalyzedEmails = await Email.find({

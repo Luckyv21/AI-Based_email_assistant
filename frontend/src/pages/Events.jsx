@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getEvents, updateEvent, deleteEvent, createEvent } from "../api/events";
+import { getEvents, updateEvent, deleteEvent, createEvent, getEventAlerts, dismissEventAlert } from "../api/events";
 import Loading from "../components/Loading";
 import ErrorState from "../components/ErrorState";
 import CategoryBadge from "../components/CategoryBadge";
+import { EventAlertsBanner } from "../components/EventAlerts";
 import { formatDate } from "../utils/formatters";
 
 export default function Events() {
   const [events, setEvents] = useState([]);
+  const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
@@ -24,12 +26,28 @@ export default function Events() {
     try {
       setLoading(true);
       setError("");
-      const res = await getEvents();
-      setEvents(res.events || []);
+      const [res, alertRes] = await Promise.allSettled([getEvents(), getEventAlerts()]);
+      if (res.status === "fulfilled") {
+        setEvents(res.value.events || []);
+      } else {
+        throw new Error(res.reason?.message || "Failed to load events");
+      }
+      if (alertRes.status === "fulfilled") {
+        setAlerts(alertRes.value.alerts || []);
+      }
     } catch (err) {
       setError(err.message || "Failed to load events");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDismissAlert = async (id) => {
+    try {
+      await dismissEventAlert(id);
+      setAlerts((prev) => prev.filter((a) => a.eventId !== id));
+    } catch (err) {
+      console.error("Dismiss alert failed:", err);
     }
   };
 
@@ -99,6 +117,9 @@ export default function Events() {
           </button>
         </div>
       </div>
+
+      {/* Active Alerts Banner */}
+      <EventAlertsBanner alerts={alerts} onDismiss={handleDismissAlert} />
 
       {/* Filter Tabs */}
       <div style={{ display: "flex", gap: "8px", margin: "16px 0 24px" }}>

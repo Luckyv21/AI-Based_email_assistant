@@ -267,10 +267,357 @@ async function deleteEndedEvents(userId = null) {
     }
 }
 
+const STOPWORDS = new Set([
+    "a", "an", "the", "and", "or", "in", "on", "at", "to", "for", "of", "with",
+    "is", "are", "was", "were", "be", "been", "we", "i", "you", "he", "she", "it",
+    "they", "my", "your", "our", "let", "lets", "let's", "hi", "hello", "hey",
+    "from", "about", "this", "that", "have", "has", "had", "do", "does", "did",
+    "will", "would", "shall", "should", "can", "could", "may", "might", "must",
+    "re", "fwd", "fw", "subject", "email", "meeting", "call", "new", "update"
+]);
+
+function extractKeywords(str) {
+    if (!str || typeof str !== "string") return [];
+    return str
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+}
+
+function calculateKeywordOverlap(wordsA, wordsB) {
+    if (!wordsA.length || !wordsB.length) return 0;
+    const setA = new Set(wordsA);
+    const setB = new Set(wordsB);
+    let intersection = 0;
+    for (const w of setA) {
+        if (setB.has(w)) intersection++;
+    }
+    const union = new Set([...wordsA, ...wordsB]).size;
+    return union > 0 ? intersection / union : 0;
+}
+
+/**
+ * Checks if an email is indicating that an event / meeting is cancelled or called off.
+ */
+function isCancellationEmail(emailDoc) {
+    if (!emailDoc) return false;
+    const subj = String(emailDoc.subject || "").toLowerCase();
+    const body = String(emailDoc.body || "").toLowerCase();
+    const text = `${subj} ${body}`;
+
+    const cancelPatterns = [
+        /\b(cancell?ed|cancellation|canceling|cancelling|called off|calling off)\b/i,
+        /\b(unable to attend|cannot make it|can't make it|will not be able to attend|won't be able to make it|not taking place)\b/i,
+        /\b(postponed indefinitely|event is off|meeting is off)\b/i
+    ];
+
+    const hasCancelPhrase = cancelPatterns.some((pattern) => pattern.test(text));
+    if (!hasCancelPhrase) return false;
+
+    // Must be in the context of an event / meeting
+    const eventContextPatterns = [
+        /\b(meeting|discussion|session|call|event|interview|exam|review|demo|appointment|presentation|webinar|class)\b/i
+    ];
+    return eventContextPatterns.some((pattern) => pattern.test(text));
+}
+
+/**
+ * Searches for an existing upcoming event for the user that matches this email/event.
+ */
+async function findSimilarEvent(userId, { title = "", emailDoc = null, resolvedDate = null } = {}) {
+    if (!userId) return null;
+
+    const existingEvents = await Event.find({
+        user: userId,
+        status: { $ne: "Cancelled" }
+    }).populate("email", "subject providerThreadId providerDate");
+
+    if (!existingEvents || !existingEvents.length) return null;
+
+    const threadId = emailDoc?.providerThreadId;
+    const newKeywords = [
+        ...extractKeywords(title),
+        ...extractKeywords(emailDoc?.subject || "")
+    ];
+
+    for (const ev of existingEvents) {
+        // 1. Thread matching - same email thread/conversation
+        if (threadId && ev.email?.providerThreadId && threadId === ev.email.providerThreadId) {
+            return ev;
+        }
+
+        // 2. Exact or very close title
+        const evTitle = String(ev.title || "").toLowerCase().trim();
+        const curTitle = String(title || "").toLowerCase().trim();
+        if (evTitle && curTitle && (evTitle === curTitle || evTitle.includes(curTitle) || curTitle.includes(evTitle))) {
+            return ev;
+        }
+
+        // 3. Keyword semantic overlap
+        const existingKeywords = [
+            ...extractKeywords(ev.title),
+            ...extractKeywords(ev.email?.subject || ""),
+            ...extractKeywords(ev.description || "")
+        ];
+
+        const overlap = calculateKeywordOverlap(newKeywords, existingKeywords);
+        const setA = new Set(newKeywords);
+        let intersectionCount = 0;
+        for (const w of setA) {
+            if (existingKeywords.includes(w)) intersectionCount++;
+        }
+
+        if (overlap >= 0.3 || intersectionCount >= 2) {
+            return ev;
+        }
+
+        // 4. Same date and at least one shared keyword
+        if (resolvedDate && ev.eventDate) {
+            const sameDay =
+                new Date(resolvedDate).toDateString() === new Date(ev.eventDate).toDateString();
+            if (sameDay && intersectionCount >= 1) {
+                return ev;
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * If the email is a cancellation, find and delete the existing matching event.
+ */
+async function handleCancellationIfApplicable(emailDoc, userId) {
+    if (!userId || !isCancellationEmail(emailDoc)) {
+        return false;
+    }
+
+    const matchedEvent = await findSimilarEvent(userId, {
+        title: emailDoc.subject || "",
+        emailDoc
+    });
+
+    if (matchedEvent) {
+        console.log(`🗑️ Deleting cancelled event: "${matchedEvent.title}" (ID: ${matchedEvent._id}) due to cancellation email.`);
+        await Event.findByIdAndDelete(matchedEvent._id);
+
+        if (matchedEvent.email) {
+            await Email.updateOne(
+                { _id: matchedEvent.email },
+                { $set: { hasEvent: false, extractedEvents: [] } }
+            );
+        }
+
+        emailDoc.hasEvent = false;
+        emailDoc.extractedEvents = [];
+        await emailDoc.save();
+
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Upserts or updates an existing similar event, or creates a new one.
+ */
+async function processOrUpsertEvent({ userId, emailDoc, eventData, category = "Other", resolvedDate }) {
+    // 1. Check if an existing similar event exists
+    const similar = await findSimilarEvent(userId, {
+        title: eventData.title,
+        emailDoc,
+        resolvedDate
+    });
+
+    if (similar) {
+        console.log(`🔄 Updating existing similar event: "${similar.title}" -> "${eventData.title}"`);
+        similar.title = eventData.title || similar.title;
+        similar.eventDate = resolvedDate || similar.eventDate;
+        similar.eventDateRaw = eventData.date || similar.eventDateRaw;
+        if (eventData.time) similar.eventTime = eventData.time;
+        if (eventData.location) similar.location = eventData.location;
+        similar.category = category || similar.category;
+        similar.description = `Updated from: "${emailDoc.subject || "Email"}"`;
+        similar.eventType = "Update";
+        similar.lastUpdatedFromEmail = emailDoc._id;
+        similar.status = "Upcoming";
+        await similar.save();
+        return { event: similar, isNew: false };
+    }
+
+    // 2. Otherwise create a brand new event
+    console.log(`✨ Creating new event: "${eventData.title}"`);
+    const newEv = await Event.create({
+        user: userId,
+        email: emailDoc._id,
+        title: eventData.title,
+        description: `Detected from: "${emailDoc.subject || "Email"}"`,
+        category: category,
+        eventDate: resolvedDate,
+        eventDateRaw: eventData.date || "",
+        eventTime: eventData.time || "",
+        location: eventData.location || "",
+        eventType: "New",
+        status: "Upcoming"
+    });
+
+    return { event: newEv, isNew: true };
+}
+
+/**
+ * Derives the exact start Date-Time object for an event from date + time strings.
+ */
+function getEventStartDateTime(event) {
+    if (!event || !event.eventDate) return null;
+    const d = new Date(event.eventDate);
+    if (isNaN(d.getTime())) return null;
+
+    if (event.eventTime && typeof event.eventTime === "string") {
+        const timeMatch = event.eventTime.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+        if (timeMatch) {
+            let hours = parseInt(timeMatch[1], 10);
+            const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+            const meridian = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
+
+            if (meridian === "pm" && hours < 12) hours += 12;
+            if (meridian === "am" && hours === 12) hours = 0;
+
+            d.setHours(hours, minutes, 0, 0);
+            return d;
+        }
+    }
+
+    d.setHours(9, 0, 0, 0);
+    return d;
+}
+
+/**
+ * Formats an alert summary with urgency and human-friendly time countdown.
+ */
+function calculateEventAlert(event, now = new Date()) {
+    const startTime = getEventStartDateTime(event);
+    if (!startTime) return null;
+
+    const diffMs = startTime.getTime() - now.getTime();
+    const diffMinutes = Math.round(diffMs / (1000 * 60));
+    const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+    // If event has concluded over 30 mins ago, no alert
+    if (diffMs < -1000 * 60 * 30) {
+        return null;
+    }
+
+    let urgency = "upcoming";
+    let timeRemaining = "";
+
+    if (diffMinutes <= 0 && diffMinutes >= -30) {
+        urgency = "imminent";
+        timeRemaining = "Happening right now";
+    } else if (diffMinutes > 0 && diffMinutes <= 60) {
+        urgency = "imminent";
+        timeRemaining = `In ${diffMinutes} minute${diffMinutes === 1 ? "" : "s"}`;
+    } else if (diffHours > 0 && diffHours <= 24) {
+        urgency = "today";
+        timeRemaining = `In ~${diffHours} hour${diffHours === 1 ? "" : "s"}`;
+    } else if (diffDays <= 2) {
+        urgency = "tomorrow";
+        timeRemaining = "Tomorrow";
+    } else {
+        urgency = "upcoming";
+        timeRemaining = `In ${diffDays} days`;
+    }
+
+    return {
+        eventId: event._id,
+        title: event.title,
+        category: event.category || "Other",
+        startTime,
+        eventDate: event.eventDate,
+        eventTime: event.eventTime || "",
+        location: event.location || "",
+        urgency,
+        timeRemaining,
+        reminderSent: Boolean(event.reminderSent),
+        alertDismissed: Boolean(event.alertDismissed),
+        alertMessage: `${event.title} is scheduled for ${event.eventTime ? event.eventTime : startTime.toLocaleDateString()}${event.location ? ` at ${event.location}` : ""}`,
+        email: event.email
+    };
+}
+
+/**
+ * Returns active upcoming alerts for a specific user.
+ */
+async function getUserEventAlerts(userId) {
+    await deleteEndedEvents(userId);
+
+    const now = new Date();
+    const events = await Event.find({
+        user: userId,
+        status: "Upcoming",
+        alertDismissed: { $ne: true }
+    })
+        .sort({ eventDate: 1 })
+        .populate("email", "subject providerSender providerDate")
+        .lean() || [];
+
+    const alerts = [];
+    for (const ev of events) {
+        const alert = calculateEventAlert(ev, now);
+        if (alert) {
+            alerts.push(alert);
+        }
+    }
+
+    return alerts;
+}
+
+/**
+ * Checks and marks reminderSent for any events nearing their scheduled start.
+ */
+async function checkAndTriggerEventReminders() {
+    try {
+        const now = new Date();
+        const upcomingEvents = await Event.find({
+            status: "Upcoming",
+            reminderSent: false
+        }).lean() || [];
+
+        for (const ev of upcomingEvents) {
+            const startTime = getEventStartDateTime(ev);
+            if (!startTime) continue;
+
+            const reminderMinutes = ev.reminderMinutesBefore || 60;
+            const diffMinutes = (startTime.getTime() - now.getTime()) / (1000 * 60);
+
+            if (diffMinutes <= reminderMinutes && diffMinutes >= -15) {
+                console.log(`🔔 Event Alert Triggered: "${ev.title}" starting in ${Math.round(diffMinutes)} minutes!`);
+                await Event.updateOne(
+                    { _id: ev._id },
+                    { $set: { reminderSent: true, reminderTime: now } }
+                );
+            }
+        }
+    } catch (err) {
+        console.error("Error in checkAndTriggerEventReminders:", err.message);
+    }
+}
+
 module.exports = {
     MONTHS,
     extractRealEventDate,
     isEventEnded,
     isGarbageEvent,
-    deleteEndedEvents
+    deleteEndedEvents,
+    extractKeywords,
+    calculateKeywordOverlap,
+    isCancellationEmail,
+    findSimilarEvent,
+    handleCancellationIfApplicable,
+    processOrUpsertEvent,
+    getEventStartDateTime,
+    calculateEventAlert,
+    getUserEventAlerts,
+    checkAndTriggerEventReminders
 };

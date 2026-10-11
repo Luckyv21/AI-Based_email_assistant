@@ -1,6 +1,6 @@
 const Event = require("../models/Event");
 const Email = require("../models/Email");
-const { deleteEndedEvents, isEventEnded } = require("../services/eventService");
+const { deleteEndedEvents, isEventEnded, findSimilarEvent, getUserEventAlerts } = require("../services/eventService");
 
 const getEvents = async (req, res) => {
     try {
@@ -65,6 +65,30 @@ const createEvent = async (req, res) => {
         if (isEventEnded(validDate, eventTime)) {
             return res.status(400).json({
                 message: "Cannot create an event that is already ended or in the past"
+            });
+        }
+
+        const similar = await findSimilarEvent(req.user.userId, {
+            title: title.trim(),
+            resolvedDate: validDate
+        });
+
+        if (similar) {
+            similar.title = title.trim();
+            similar.eventDate = validDate;
+            similar.eventDateRaw = String(eventDate || "");
+            if (eventTime) similar.eventTime = eventTime;
+            if (location) similar.location = location;
+            if (description) similar.description = description;
+            if (category) similar.category = category;
+            if (emailId) similar.email = emailId;
+            similar.eventType = "Update";
+            similar.status = "Upcoming";
+            await similar.save();
+
+            return res.status(200).json({
+                message: "Existing similar event updated successfully",
+                event: similar
             });
         }
 
@@ -162,10 +186,77 @@ const deleteEvent = async (req, res) => {
     }
 };
 
+const getAlerts = async (req, res) => {
+    try {
+        const alerts = await getUserEventAlerts(req.user.userId);
+        return res.status(200).json({
+            count: alerts.length,
+            alerts
+        });
+    } catch (error) {
+        console.error("Get alerts error:", error);
+        return res.status(500).json({ message: "Failed to fetch event alerts" });
+    }
+};
+
+const dismissAlert = async (req, res) => {
+    try {
+        const event = await Event.findOneAndUpdate(
+            { _id: req.params.id, user: req.user.userId },
+            { $set: { alertDismissed: true } },
+            { new: true }
+        );
+
+        if (!event) {
+            return res.status(404).json({ message: "Event not found" });
+        }
+
+        return res.status(200).json({
+            message: "Alert dismissed successfully",
+            eventId: req.params.id
+        });
+    } catch (error) {
+        console.error("Dismiss alert error:", error);
+        return res.status(500).json({ message: "Failed to dismiss alert" });
+    }
+};
+
+const setReminder = async (req, res) => {
+    try {
+        const { minutesBefore } = req.body;
+        const event = await Event.findOneAndUpdate(
+            { _id: req.params.id, user: req.user.userId },
+            {
+                $set: {
+                    reminderMinutesBefore: Number(minutesBefore) || 60,
+                    reminderSent: false,
+                    alertDismissed: false
+                }
+            },
+            { new: true }
+        );
+
+        if (!event) {
+            return res.status(404).json({ message: "Event not found" });
+        }
+
+        return res.status(200).json({
+            message: "Reminder updated successfully",
+            event
+        });
+    } catch (error) {
+        console.error("Set reminder error:", error);
+        return res.status(500).json({ message: "Failed to update reminder" });
+    }
+};
+
 module.exports = {
     getEvents,
     getEventById,
     createEvent,
     updateEvent,
-    deleteEvent
+    deleteEvent,
+    getAlerts,
+    dismissAlert,
+    setReminder
 };

@@ -115,8 +115,12 @@ const syncGmailMessages = async ({ user, gmail, parseMessage, EmailModel = Email
                 await EmailModel.updateOne({ _id: existing._id }, { $set: document });
                 if (!existing.category || existing.category === "Other" || !existing.categoryConfidence) {
                     try {
-                        const updatedDoc = await EmailModel.findById(existing._id);
-                        await applyAIToEmail(updatedDoc, user._id);
+                        const updatedDoc = EmailModel.findById
+                            ? await EmailModel.findById(existing._id)
+                            : await EmailModel.findOne({ _id: existing._id });
+                        if (updatedDoc) {
+                            await applyAIToEmail(updatedDoc, user._id);
+                        }
                     } catch (e) {
                         console.error("AI analysis error on existing email:", e.message);
                     }

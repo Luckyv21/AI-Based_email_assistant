@@ -1,7 +1,12 @@
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8001";
 const Email = require("../models/Email");
 const Event = require("../models/Event");
-const { extractRealEventDate, isEventEnded } = require("./eventService");
+const {
+    extractRealEventDate,
+    isEventEnded,
+    handleCancellationIfApplicable,
+    processOrUpsertEvent
+} = require("./eventService");
 
 const mapCategory = (rawCategory) => {
     const raw = String(rawCategory || "").toLowerCase();
@@ -30,7 +35,7 @@ const mapPriority = (rawPriority) => {
 
 const isAdvertisementEmail = (emailDoc) => {
     const labels = Array.isArray(emailDoc.providerLabels) ? emailDoc.providerLabels : [];
-    if (labels.some((l) => ["CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "SPAM", "PROMOTIONS"].includes(l))) {
+    if (labels.some((l) => ["CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "PROMOTIONS"].includes(l))) {
         return true;
     }
 
@@ -240,6 +245,17 @@ const applyAIToEmail = async (emailDoc, userId) => {
     emailDoc.priority = analysis.priority;
     emailDoc.priorityConfidence = analysis.priorityConfidence;
 
+    // 1. Check if this email is a cancellation of an existing event
+    if (userId) {
+        const wasCancelled = await handleCancellationIfApplicable(emailDoc, userId);
+        if (wasCancelled) {
+            emailDoc.hasEvent = false;
+            emailDoc.extractedEvents = [];
+            await emailDoc.save();
+            return emailDoc;
+        }
+    }
+
     // Filter events: strictly keep relevant calendar events, completely excluding advertisements
     const rawEvents = analysis.events || [];
     const relevantEvents = rawEvents.filter((ev) => isRelevantEvent(ev, emailDoc));
@@ -257,51 +273,29 @@ const applyAIToEmail = async (emailDoc, userId) => {
 
             // If the event date/month/time is already over/ended, automatically discard it
             if (isEventEnded(resolvedDate, ev.time)) {
-                try {
-                    await Event.deleteMany({ email: emailDoc._id, title: ev.title });
-                } catch (e) {
-                    // ignore
-                }
                 continue;
             }
 
-            activeEvents.push({
-                ...ev,
-                eventDate: resolvedDate
-            });
-
             try {
-                await Event.findOneAndUpdate(
-                    {
-                        user: userId,
-                        email: emailDoc._id,
-                        title: ev.title
-                    },
-                    {
-                        $set: {
-                            user: userId,
-                            email: emailDoc._id,
-                            title: ev.title,
-                            description: `Detected from: "${emailDoc.subject || "Email"}"`,
-                            category: analysis.category,
-                            eventDate: resolvedDate,
-                            eventDateRaw: ev.date || "",
-                            eventTime: ev.time || "",
-                            location: ev.location || "",
-                            status: "Upcoming"
-                        }
-                    },
-                    { upsert: true, returnDocument: "after" }
-                );
+                const { event: savedEvent } = await processOrUpsertEvent({
+                    userId,
+                    emailDoc,
+                    eventData: ev,
+                    category: analysis.category,
+                    resolvedDate
+                });
+
+                activeEvents.push({
+                    ...ev,
+                    title: savedEvent.title,
+                    eventDate: savedEvent.eventDate,
+                    eventType: savedEvent.eventType,
+                    location: savedEvent.location,
+                    time: savedEvent.eventTime
+                });
             } catch (err) {
-                console.error("Failed to persist event to Event collection:", err.message);
+                console.error("Failed to persist/update event in Event collection:", err.message);
             }
-        }
-    } else if (userId) {
-        try {
-            await Event.deleteMany({ email: emailDoc._id });
-        } catch (e) {
-            // ignore
         }
     }
 
