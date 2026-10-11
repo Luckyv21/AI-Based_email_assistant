@@ -9,6 +9,7 @@ const {
     deleteEvent,
     getAlerts,
     dismissAlert,
+    restoreAlert,
     setReminder
 } = require("../controllers/eventController");
 
@@ -16,6 +17,7 @@ router.use(protect);
 
 router.get("/alerts", getAlerts);
 router.patch("/:id/dismiss-alert", dismissAlert);
+router.patch("/:id/restore-alert", restoreAlert);
 router.patch("/:id/reminder", setReminder);
 router.get("/", getEvents);
 router.get("/:id", getEventById);

@@ -547,7 +547,7 @@ function calculateEventAlert(event, now = new Date()) {
 }
 
 /**
- * Returns active upcoming alerts for a specific user.
+ * Returns active and dismissed upcoming alerts for a specific user.
  */
 async function getUserEventAlerts(userId) {
     await deleteEndedEvents(userId);
@@ -555,22 +555,26 @@ async function getUserEventAlerts(userId) {
     const now = new Date();
     const events = await Event.find({
         user: userId,
-        status: "Upcoming",
-        alertDismissed: { $ne: true }
+        status: "Upcoming"
     })
         .sort({ eventDate: 1 })
         .populate("email", "subject providerSender providerDate")
         .lean() || [];
 
     const alerts = [];
+    const dismissedAlerts = [];
     for (const ev of events) {
         const alert = calculateEventAlert(ev, now);
         if (alert) {
-            alerts.push(alert);
+            if (ev.alertDismissed) {
+                dismissedAlerts.push(alert);
+            } else {
+                alerts.push(alert);
+            }
         }
     }
 
-    return alerts;
+    return { alerts, dismissedAlerts };
 }
 
 /**

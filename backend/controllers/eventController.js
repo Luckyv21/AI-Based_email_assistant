@@ -188,10 +188,12 @@ const deleteEvent = async (req, res) => {
 
 const getAlerts = async (req, res) => {
     try {
-        const alerts = await getUserEventAlerts(req.user.userId);
+        const { alerts, dismissedAlerts } = await getUserEventAlerts(req.user.userId);
         return res.status(200).json({
             count: alerts.length,
-            alerts
+            alerts,
+            dismissedCount: dismissedAlerts.length,
+            dismissedAlerts
         });
     } catch (error) {
         console.error("Get alerts error:", error);
@@ -213,11 +215,35 @@ const dismissAlert = async (req, res) => {
 
         return res.status(200).json({
             message: "Alert dismissed successfully",
-            eventId: req.params.id
+            eventId: req.params.id,
+            event
         });
     } catch (error) {
         console.error("Dismiss alert error:", error);
         return res.status(500).json({ message: "Failed to dismiss alert" });
+    }
+};
+
+const restoreAlert = async (req, res) => {
+    try {
+        const event = await Event.findOneAndUpdate(
+            { _id: req.params.id, user: req.user.userId },
+            { $set: { alertDismissed: false, reminderSent: false } },
+            { new: true }
+        );
+
+        if (!event) {
+            return res.status(404).json({ message: "Event not found" });
+        }
+
+        return res.status(200).json({
+            message: "Alert restored successfully",
+            eventId: req.params.id,
+            event
+        });
+    } catch (error) {
+        console.error("Restore alert error:", error);
+        return res.status(500).json({ message: "Failed to restore alert" });
     }
 };
 
@@ -258,5 +284,6 @@ module.exports = {
     deleteEvent,
     getAlerts,
     dismissAlert,
+    restoreAlert,
     setReminder
 };

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getEvents, updateEvent, deleteEvent, createEvent, getEventAlerts, dismissEventAlert } from "../api/events";
+import { getEvents, updateEvent, deleteEvent, createEvent, getEventAlerts, dismissEventAlert, restoreEventAlert } from "../api/events";
 import Loading from "../components/Loading";
 import ErrorState from "../components/ErrorState";
 import CategoryBadge from "../components/CategoryBadge";
@@ -10,6 +10,7 @@ import { formatDate } from "../utils/formatters";
 export default function Events() {
   const [events, setEvents] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [lastDismissed, setLastDismissed] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
@@ -42,12 +43,40 @@ export default function Events() {
     }
   };
 
-  const handleDismissAlert = async (id) => {
+  const handleDismissAlert = async (alertOrId) => {
+    const id = typeof alertOrId === "object" ? alertOrId.eventId : alertOrId;
+    const alertObj = typeof alertOrId === "object" ? alertOrId : alerts.find((a) => a.eventId === id);
     try {
       await dismissEventAlert(id);
       setAlerts((prev) => prev.filter((a) => a.eventId !== id));
+      if (alertObj) setLastDismissed(alertObj);
+      setEvents((prev) => prev.map((e) => (e._id === id ? { ...e, alertDismissed: true } : e)));
     } catch (err) {
       console.error("Dismiss alert failed:", err);
+    }
+  };
+
+  const handleRestoreAlert = async (alertOrId) => {
+    const id = typeof alertOrId === "object" ? alertOrId.eventId : alertOrId;
+    try {
+      await restoreEventAlert(id);
+      setLastDismissed(null);
+      await loadEvents();
+    } catch (err) {
+      console.error("Restore alert failed:", err);
+    }
+  };
+
+  const handleToggleAlert = async (id, enable) => {
+    try {
+      if (enable) {
+        await restoreEventAlert(id);
+      } else {
+        await dismissEventAlert(id);
+      }
+      await loadEvents();
+    } catch (err) {
+      alert("Failed to update alert state: " + err.message);
     }
   };
 
@@ -119,7 +148,12 @@ export default function Events() {
       </div>
 
       {/* Active Alerts Banner */}
-      <EventAlertsBanner alerts={alerts} onDismiss={handleDismissAlert} />
+      <EventAlertsBanner
+        alerts={alerts}
+        onDismiss={handleDismissAlert}
+        onRestore={handleRestoreAlert}
+        lastDismissed={lastDismissed}
+      />
 
       {/* Filter Tabs */}
       <div style={{ display: "flex", gap: "8px", margin: "16px 0 24px" }}>
@@ -221,7 +255,28 @@ export default function Events() {
               </div>
 
               {/* Action buttons */}
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "16px", paddingTop: "10px", borderTop: "1px solid var(--border, #f0f0f0)" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: "8px", marginTop: "16px", paddingTop: "10px", borderTop: "1px solid var(--border, #f0f0f0)" }}>
+                {item.status === "Upcoming" && (
+                  item.alertDismissed ? (
+                    <button
+                      className="button button-quiet"
+                      style={{ fontSize: "11px", padding: "4px 8px", color: "#22c55e" }}
+                      title="Alert is currently muted. Click to add alert back."
+                      onClick={() => handleToggleAlert(item._id, true)}
+                    >
+                      🔔 Add Alert Back
+                    </button>
+                  ) : (
+                    <button
+                      className="button button-quiet"
+                      style={{ fontSize: "11px", padding: "4px 8px", color: "#94a3b8" }}
+                      title="Mute alert for this event"
+                      onClick={() => handleToggleAlert(item._id, false)}
+                    >
+                      🔕 Mute Alert
+                    </button>
+                  )
+                )}
                 {item.status !== "Completed" && (
                   <button
                     className="button button-quiet"

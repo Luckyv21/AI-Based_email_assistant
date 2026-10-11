@@ -44,6 +44,12 @@ export async function dismissEventAlert(id) {
   });
 }
 
+export async function restoreEventAlert(id) {
+  return request(`/api/events/${id}/restore-alert`, {
+    method: "PATCH"
+  });
+}
+
 export async function setEventReminder(id, minutesBefore) {
   return request(`/api/events/${id}/reminder`, {
     method: "PATCH",
