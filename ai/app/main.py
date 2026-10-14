@@ -1,7 +1,13 @@
+import gc
 import logging
+import threading
 
+import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
+# Limit PyTorch CPU threads to avoid excessive memory allocation during inference
+torch.set_num_threads(2)
 
 from app.config import settings
 from app.schemas import (
@@ -16,6 +22,9 @@ from app.services.model_service import classifier
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Mutex to ensure neural inferences are executed sequentially and do not exhaust RAM
+inference_lock = threading.Lock()
 
 app = FastAPI(
     title="Email Assistant AI Service",
@@ -45,7 +54,9 @@ def health() -> HealthResponse:
 @app.post("/predict", response_model=PredictionResponse)
 def predict(request: PredictionRequest) -> PredictionResponse:
     try:
-        return classifier.predict(request.subject, request.body)
+        with inference_lock:
+            res = classifier.predict(request.subject, request.body)
+            return res
     except Exception as error:
         logger.exception("Classifier inference failed: %s", error)
         raise HTTPException(status_code=503, detail="Classifier unavailable") from error
@@ -54,11 +65,12 @@ def predict(request: PredictionRequest) -> PredictionResponse:
 @app.post("/extract-events", response_model=EventExtractionResponse)
 def extract_events(request: PredictionRequest) -> EventExtractionResponse:
     try:
-        prediction = classifier.predict(request.subject, request.body)
-        return EventExtractionResponse(
-            has_event=prediction.has_event,
-            events=prediction.events,
-        )
+        with inference_lock:
+            prediction = classifier.predict(request.subject, request.body)
+            return EventExtractionResponse(
+                has_event=prediction.has_event,
+                events=prediction.events,
+            )
     except Exception as error:
         logger.exception("Event extraction failed: %s", error)
         raise HTTPException(status_code=503, detail="Event extraction failed") from error

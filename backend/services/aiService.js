@@ -131,18 +131,36 @@ const cleanEventTitle = (rawTitle, subject = "") => {
         "verification",
         "password",
         "google account",
-        "session"
+        "session",
+        "is changed to",
+        "changed to",
+        "timing is changed",
+        "timing changed to",
+        "timing for",
+        "timing is",
+        "timing",
+        "rescheduled to",
+        "rescheduled",
+        "postponed to",
+        "moved to",
+        "let's meet",
+        "lets meet",
+        "meet"
     ];
 
-    if (junkWords.includes(t.toLowerCase())) {
+    if (junkWords.includes(t.toLowerCase()) || /^(is changed to|changed to|rescheduled|postponed|timing|let'?s meet|meet)$/i.test(t)) {
         t = "";
     }
 
     if (!t || t.length < 3) {
-        const m = subject.match(
-            /(exam[^!,.?]*|meeting[^!,.?]*|session[^!,.?]*|webinar[^!,.?]*|interview[^!,.?]*|deadline[^!,.?]*|presentation[^!,.?]*|conference[^!,.?]*|workshop[^!,.?]*|kickoff[^!,.?]*)/i
+        const cleanSubj = (subject || "").replace(/^(re|fwd|fw):\s*/i, "").trim();
+        const m = cleanSubj.match(
+            /(exam[^!,.?]*|meeting[^!,.?]*|discussion[^!,.?]*|demo[^!,.?]*|session[^!,.?]*|webinar[^!,.?]*|interview[^!,.?]*|deadline[^!,.?]*|presentation[^!,.?]*|conference[^!,.?]*|workshop[^!,.?]*|kickoff[^!,.?]*)/i
         );
         if (m) return m[1].trim();
+        if (cleanSubj && cleanSubj.length >= 3 && !junkWords.includes(cleanSubj.toLowerCase())) {
+            return cleanSubj;
+        }
         return "";
     }
 
@@ -178,10 +196,12 @@ const isRelevantEvent = (eventObj, emailDoc) => {
     const hasDateTime = rawDate.length > 1 || rawTime.length > 1;
 
     const meetingKeywords =
-        /\b(meeting|sync|interview|call|standup|discussion|webinar|workshop|seminar|presentation|appointment|deadline|defense|exam|test|class|lecture|conference|catch-up|demo|kickoff|office hours|session)\b/i;
+        /\b(meeting|sync|interview|call|standup|discussion|webinar|workshop|seminar|presentation|appointment|deadline|defense|exam|test|class|lecture|conference|catch-up|demo|kickoff|office hours|session|timing|demonstration)\b/i;
 
     const isCalendarEvent =
-        meetingKeywords.test(cleanedTitle) || meetingKeywords.test(emailDoc.subject || "");
+        meetingKeywords.test(cleanedTitle) ||
+        meetingKeywords.test(emailDoc.subject || "") ||
+        meetingKeywords.test(emailDoc.body || "");
 
     return hasDateTime && isCalendarEvent;
 };

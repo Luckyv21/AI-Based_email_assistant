@@ -17,6 +17,22 @@ An intelligent, full-stack email assistant designed to automate email processing
 
 ---
 
+## 📸 Application Preview
+
+| Login & Authentication | Smart Inbox Dashboard |
+|:---:|:---:|
+| <img src="docs/screenshots/01-login-screen.jpg" width="460" alt="Mailistor Login Screen" /> | <img src="docs/screenshots/02-inbox-dashboard.png" width="460" alt="Mailistor Inbox Dashboard" /> |
+
+| Dual-Model AI Intelligence & Extraction | Real-time Event Alerts |
+|:---:|:---:|
+| <img src="docs/screenshots/03-email-ai-analysis.png" width="460" alt="Dual-Model AI Analysis" /> | <img src="docs/screenshots/04-event-alerts.png" width="460" alt="Event Alerts Popup" /> |
+
+| AI Calendar Intelligence & Agenda |
+|:---:|
+| <img src="docs/screenshots/05-events-calendar.png" width="700" alt="Events and Agenda Calendar" /> |
+
+---
+
 ## 🏗️ Architecture & Tech Stack
 
 | Layer | Technologies |

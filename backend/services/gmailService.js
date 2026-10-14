@@ -84,7 +84,7 @@ const toEmailDocument = (parsedMessage, user) => ({
     attachments: parsedMessage.attachments || []
 });
 
-const syncGmailMessages = async ({ user, gmail, parseMessage, EmailModel = Email, maxPages = 100, query = "" }) => {
+const syncGmailMessages = async ({ user, gmail, parseMessage, EmailModel = Email, maxPages = 100, query = "", maxResults = 100 }) => {
     let pageToken;
     let fetched = 0;
     let inserted = 0;
@@ -94,12 +94,14 @@ const syncGmailMessages = async ({ user, gmail, parseMessage, EmailModel = Email
     for (let page = 0; page < maxPages; page += 1) {
         const response = await gmail.users.messages.list({
             userId: "me",
-            maxResults: 100,
+            maxResults: Math.min(Math.max(Number(maxResults) || 100, 1), 100),
             includeSpamTrash: true,
             pageToken,
             ...(query ? { q: query } : {})
         });
         const messageList = response.data.messages || [];
+
+        const emailsToAnalyze = [];
 
         const chunkResults = await Promise.allSettled(messageList.map(async (message) => {
             const fullMessage = await getGmailMessage(gmail, message.id);
@@ -113,29 +115,36 @@ const syncGmailMessages = async ({ user, gmail, parseMessage, EmailModel = Email
 
             if (existing) {
                 await EmailModel.updateOne({ _id: existing._id }, { $set: document });
-                if (!existing.category || existing.category === "Other" || !existing.categoryConfidence) {
-                    try {
-                        const updatedDoc = EmailModel.findById
-                            ? await EmailModel.findById(existing._id)
-                            : await EmailModel.findOne({ _id: existing._id });
-                        if (updatedDoc) {
-                            await applyAIToEmail(updatedDoc, user._id);
-                        }
-                    } catch (e) {
-                        console.error("AI analysis error on existing email:", e.message);
+                const needsAnalysis = !existing.category ||
+                    existing.category === "Other" ||
+                    !existing.categoryConfidence ||
+                    existing.categoryConfidence < 0.1 ||
+                    (existing.hasEvent === false && (!existing.extractedEvents || existing.extractedEvents.length === 0));
+
+                if (needsAnalysis) {
+                    const updatedDoc = EmailModel.findById
+                        ? await EmailModel.findById(existing._id)
+                        : await EmailModel.findOne({ _id: existing._id });
+                    if (updatedDoc) {
+                        emailsToAnalyze.push(updatedDoc);
                     }
                 }
                 return 'updated';
             } else {
                 const created = await EmailModel.create(document);
-                try {
-                    await applyAIToEmail(created, user._id);
-                } catch (e) {
-                    console.error("AI analysis error on new email:", e.message);
-                }
+                emailsToAnalyze.push(created);
                 return 'inserted';
             }
         }));
+
+        // Execute AI analysis sequentially to prevent PyTorch threadpool memory exhaustion
+        for (const doc of emailsToAnalyze) {
+            try {
+                await applyAIToEmail(doc, user._id);
+            } catch (e) {
+                console.error("AI analysis error on email:", e.message);
+            }
+        }
 
         for (const result of chunkResults) {
             fetched += 1;

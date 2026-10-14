@@ -16,6 +16,21 @@ const MONTHS = {
     dec: 11, december: 11
 };
 
+function parseTimeComponents(timeStr) {
+    if (!timeStr || typeof timeStr !== "string") return null;
+    const timeMatch = timeStr.match(/(\d{1,2})(?:\s*:\s*(\d{2}))?\s*(am|pm)?/i);
+    if (!timeMatch) return null;
+
+    let hours = parseInt(timeMatch[1], 10);
+    const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+    const meridian = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
+
+    if (meridian === "pm" && hours < 12) hours += 12;
+    if (meridian === "am" && hours === 12) hours = 0;
+
+    return { hours, minutes, meridian };
+}
+
 /**
  * Extracts the true date & time of an event from raw text, title, time string, and email context.
  */
@@ -110,16 +125,9 @@ function extractRealEventDate(title = "", rawDate = "", timeStr = "", emailDate 
     // 7. Parse and apply time if available
     const timeToParse = timeStr || "";
     if (timeToParse && targetDate) {
-        const timeMatch = timeToParse.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-        if (timeMatch) {
-            let hours = parseInt(timeMatch[1], 10);
-            const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
-            const meridian = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
-
-            if (meridian === "pm" && hours < 12) hours += 12;
-            if (meridian === "am" && hours === 12) hours = 0;
-
-            targetDate.setHours(hours, minutes, 0, 0);
+        const parsedTime = parseTimeComponents(timeToParse);
+        if (parsedTime) {
+            targetDate.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
         }
     }
 
@@ -136,23 +144,16 @@ function isEventEnded(eventDate, eventTime = "", now = new Date()) {
 
     // If explicit time is provided, compare exact date-time
     if (eventTime && typeof eventTime === "string") {
-        const timeMatch = eventTime.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-        if (timeMatch) {
-            let hours = parseInt(timeMatch[1], 10);
-            const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
-            const meridian = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
-
-            if (meridian === "pm" && hours < 12) hours += 12;
-            if (meridian === "am" && hours === 12) hours = 0;
-
-            d.setHours(hours, minutes, 0, 0);
-            return d < now;
+        const parsedTime = parseTimeComponents(eventTime);
+        if (parsedTime) {
+            d.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
+            return d <= now;
         }
     }
 
     // If no specific time was provided, the event ends at the conclusion of that date (23:59:59.999)
     d.setHours(23, 59, 59, 999);
-    return d < now;
+    return d <= now;
 }
 
 /**
@@ -161,12 +162,12 @@ function isEventEnded(eventDate, eventTime = "", now = new Date()) {
 function isGarbageEvent(title = "") {
     const t = String(title || "").trim();
     if (!t || t.length < 3) return true;
-    return /^(doctype|table id|<\/|<html|email template|^subject$|^update$|please do not share|newsletter|statement of your account|payment for|i want to connect|why is vitamin|what should i do)/i.test(t);
+    return /^(doctype|table id|<\/|<html|email template|^subject$|^update$|please do not share|newsletter|statement of your account|payment for|i want to connect|why is vitamin|what should i do|^is changed to$|^changed to$|^rescheduled to$|^timing is$|^timing$|^let'?s meet$|^lets meet$|^meet$)/i.test(t);
 }
 
 /**
- * Automatically finds and permanently deletes any events that have already ended or are past due.
- * Also cleans up corresponding references in the Email collection.
+ * Automatically updates past/ended events to "Completed" status so they no longer appear
+ * in "Upcoming" or trigger active alerts. Also removes garbage/template events.
  */
 async function deleteEndedEvents(userId = null) {
     try {
@@ -178,10 +179,15 @@ async function deleteEndedEvents(userId = null) {
 
         const events = await Event.find(query).populate("email", "subject providerDate").lean() || [];
         const toDeleteIds = [];
-        const affectedEmailIds = new Set();
+        const toCompleteIds = [];
 
         for (const ev of events) {
             const garbage = isGarbageEvent(ev.title);
+            if (garbage) {
+                toDeleteIds.push(ev._id);
+                continue;
+            }
+
             const realDate = extractRealEventDate(
                 `${ev.title} ${ev.email?.subject || ""}`,
                 ev.eventDateRaw,
@@ -189,78 +195,37 @@ async function deleteEndedEvents(userId = null) {
                 ev.email?.providerDate
             );
 
-            const ended = ev.status === "Completed" || isEventEnded(realDate, ev.eventTime, now);
-
-            if (garbage || ended) {
-                toDeleteIds.push(ev._id);
-                if (ev.email?._id) {
-                    affectedEmailIds.add(String(ev.email._id));
-                }
+            // If event has passed its scheduled date/time and is still marked "Upcoming", mark it Completed!
+            if (ev.status === "Upcoming" && isEventEnded(realDate, ev.eventTime, now)) {
+                toCompleteIds.push(ev._id);
             }
         }
 
         if (toDeleteIds.length > 0) {
-            console.log(`🧹 Auto-deleting ${toDeleteIds.length} ended/expired event(s)`);
+            console.log(`🧹 Auto-deleting ${toDeleteIds.length} garbage event(s)`);
             await Event.deleteMany({ _id: { $in: toDeleteIds } });
+        }
 
-            // Synchronize Email records
-            for (const emailId of affectedEmailIds) {
-                const remaining = await Event.find({ email: emailId }).lean();
-                if (remaining.length === 0) {
+        if (toCompleteIds.length > 0) {
+            console.log(`✅ Auto-completing ${toCompleteIds.length} past event(s)`);
+            await Event.updateMany(
+                { _id: { $in: toCompleteIds } },
+                { $set: { status: "Completed", alertDismissed: true } }
+            );
+
+            // Synchronize Email extractedEvents status
+            const completedEvents = await Event.find({ _id: { $in: toCompleteIds } }).lean();
+            for (const ev of completedEvents) {
+                if (ev.email) {
                     await Email.updateOne(
-                        { _id: emailId },
-                        { $set: { hasEvent: false, extractedEvents: [] } }
-                    );
-                } else {
-                    await Email.updateOne(
-                        { _id: emailId },
-                        {
-                            $set: {
-                                hasEvent: true,
-                                extractedEvents: remaining.map((r) => ({
-                                    title: r.title,
-                                    date: r.eventDateRaw || r.eventDate?.toISOString(),
-                                    time: r.eventTime || "",
-                                    description: r.description || "",
-                                    type: r.eventType || "New"
-                                }))
-                            }
-                        }
+                        { _id: ev.email, "extractedEvents.title": ev.title },
+                        { $set: { "extractedEvents.$.status": "Completed" } }
                     );
                 }
             }
         }
 
-        // Also ensure any Email records with hasEvent: true whose events have ended are cleaned up
-        const emailsWithEvents = await Email.find({ hasEvent: true }).select("_id subject providerDate createdAt extractedEvents").lean();
-        for (const em of emailsWithEvents) {
-            const rawEvents = em.extractedEvents || [];
-            const activeOnly = rawEvents.filter((ev) => {
-                const garbage = isGarbageEvent(ev.title);
-                if (garbage) return false;
-                const d = extractRealEventDate(
-                    `${ev.title} ${em.subject || ""}`,
-                    ev.date,
-                    ev.time,
-                    em.providerDate || em.createdAt
-                );
-                return !isEventEnded(d, ev.time, now);
-            });
-
-            if (activeOnly.length === 0) {
-                await Email.updateOne(
-                    { _id: em._id },
-                    { $set: { hasEvent: false, extractedEvents: [] } }
-                );
-            } else if (activeOnly.length !== rawEvents.length) {
-                await Email.updateOne(
-                    { _id: em._id },
-                    { $set: { hasEvent: true, extractedEvents: activeOnly } }
-                );
-            }
-        }
-
-        return toDeleteIds.length;
+        return toCompleteIds.length;
     } catch (error) {
         console.error("deleteEndedEvents error:", error.message);
         return 0;
@@ -432,7 +397,12 @@ async function processOrUpsertEvent({ userId, emailDoc, eventData, category = "O
 
     if (similar) {
         console.log(`🔄 Updating existing similar event: "${similar.title}" -> "${eventData.title}"`);
-        similar.title = eventData.title || similar.title;
+        const validTitle = eventData.title && eventData.title.length >= 3 && !isGarbageEvent(eventData.title) && eventData.title !== "Detected Event";
+        if (validTitle) {
+            similar.title = eventData.title;
+        } else if (isGarbageEvent(similar.title) && emailDoc.subject) {
+            similar.title = emailDoc.subject.replace(/^(re|fwd|fw):\s*/i, "").trim();
+        }
         similar.eventDate = resolvedDate || similar.eventDate;
         similar.eventDateRaw = eventData.date || similar.eventDateRaw;
         if (eventData.time) similar.eventTime = eventData.time;
@@ -443,6 +413,25 @@ async function processOrUpsertEvent({ userId, emailDoc, eventData, category = "O
         similar.lastUpdatedFromEmail = emailDoc._id;
         similar.status = "Upcoming";
         await similar.save();
+
+        if (similar.email && String(similar.email) !== String(emailDoc._id)) {
+            await Email.updateOne(
+                { _id: similar.email },
+                {
+                    $set: {
+                        hasEvent: true,
+                        extractedEvents: [{
+                            title: similar.title,
+                            date: similar.eventDateRaw,
+                            time: similar.eventTime,
+                            location: similar.location,
+                            type: "Update"
+                        }]
+                    }
+                }
+            );
+        }
+
         return { event: similar, isNew: false };
     }
 
@@ -474,16 +463,9 @@ function getEventStartDateTime(event) {
     if (isNaN(d.getTime())) return null;
 
     if (event.eventTime && typeof event.eventTime === "string") {
-        const timeMatch = event.eventTime.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-        if (timeMatch) {
-            let hours = parseInt(timeMatch[1], 10);
-            const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
-            const meridian = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
-
-            if (meridian === "pm" && hours < 12) hours += 12;
-            if (meridian === "am" && hours === 12) hours = 0;
-
-            d.setHours(hours, minutes, 0, 0);
+        const parsedTime = parseTimeComponents(event.eventTime);
+        if (parsedTime) {
+            d.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
             return d;
         }
     }

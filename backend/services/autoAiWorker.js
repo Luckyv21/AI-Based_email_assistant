@@ -1,18 +1,50 @@
 const Email = require("../models/Email");
+const User = require("../models/User");
 const { applyAIToEmail } = require("./aiService");
 const { deleteEndedEvents, checkAndTriggerEventReminders } = require("./eventService");
+const { getGmailClient, syncGmailMessages } = require("./gmailService");
+const { parseGmailMessage } = require("../utils/gmailParser");
 
 let isRunning = false;
 let workerTimer = null;
 let lastCleanupTime = 0;
+let lastBackgroundSync = 0;
 
-const processBatch = async (batchSize = 5) => {
+const processBatch = async (batchSize = 2) => {
     if (isRunning) return;
     isRunning = true;
 
     try {
-        // Run ended events auto-cleanup and reminder checks every 30 seconds
         const now = Date.now();
+
+        // 1. Run background Gmail sync for connected users every 25 seconds
+        if (now - lastBackgroundSync > 25000) {
+            lastBackgroundSync = now;
+            try {
+                const connectedUsers = await User.find({
+                    "google.connected": true,
+                    "google.refreshToken": { $exists: true, $ne: "" }
+                }).limit(5);
+
+                for (const u of connectedUsers) {
+                    try {
+                        await syncGmailMessages({
+                            user: u,
+                            gmail: getGmailClient(u.google.refreshToken),
+                            parseMessage: parseGmailMessage,
+                            maxPages: 1,
+                            maxResults: 15
+                        });
+                    } catch (e) {
+                        // Silent in background
+                    }
+                }
+            } catch (err) {
+                // Ignore background query errors
+            }
+        }
+
+        // 2. Run ended events auto-cleanup and reminder checks every 30 seconds
         if (now - lastCleanupTime > 30000) {
             lastCleanupTime = now;
             await deleteEndedEvents();

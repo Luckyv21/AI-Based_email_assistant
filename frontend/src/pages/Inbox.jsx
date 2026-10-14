@@ -52,6 +52,13 @@ export default function Inbox({ folder = "", title = "Inbox", filter = {} }) {
 
   useEffect(() => {
     loadCurrentPage(1);
+
+    // Auto-refresh inbox every 20 seconds so newly received emails appear seamlessly without manual sync
+    const interval = setInterval(() => {
+      loadCurrentPage(1);
+    }, 20000);
+
+    return () => clearInterval(interval);
   }, [folder, search, filter.priority, filter.category, filter.starred]);
 
   const visibleEmails = emails.filter(

@@ -115,10 +115,43 @@ const buildMailboxFilter = (userId, query) => {
     return filter;
 };
 
+const userLastSyncTimes = new Map();
+
+const autoSyncUserGmail = async (userId) => {
+    try {
+        const lastSync = userLastSyncTimes.get(String(userId)) || 0;
+        const now = Date.now();
+        // Throttle auto-sync to once every 12 seconds per user so it's snappy but avoids rate limits
+        if (now - lastSync < 12000) return;
+        userLastSyncTimes.set(String(userId), now);
+
+        const user = await User.findById(userId);
+        if (!user || !user.google?.connected || !user.google?.refreshToken) return;
+
+        await syncGmailMessages({
+            user,
+            gmail: getGmailClient(user.google.refreshToken),
+            parseMessage: parseGmailMessage,
+            maxPages: 1,
+            maxResults: 15
+        });
+    } catch (e) {
+        console.warn("Auto-sync background check warning:", e.message);
+    }
+};
+
 const getGmailMessages = async (req, res) => {
     try {
         const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
         const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 20, 1), 100);
+
+        // When requesting page 1 without search query (e.g., standard inbox refresh),
+        // trigger quick auto-sync so newly received emails from Google are fetched,
+        // analyzed, and events updated before returning to the frontend!
+        if (page === 1 && !req.query.search) {
+            await autoSyncUserGmail(req.user.userId);
+        }
+
         const filter = buildMailboxFilter(req.user.userId, req.query);
         const [messages, total] = await Promise.all([
             Email.find(filter)
